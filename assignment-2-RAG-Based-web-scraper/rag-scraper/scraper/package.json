@@ -1,0 +1,23 @@
+{
+  "name": "scraper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "bullmq": "^5.80.9",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "ioredis": "^5.11.1",
+    "robots-parser": "^3.0.1"
+  }
+}
