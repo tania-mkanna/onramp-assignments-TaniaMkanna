@@ -1,0 +1,46 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+model RawPage {
+  id          String   @id @default(uuid())
+  url         String   @unique
+  domain      String
+
+  fetchedAt   DateTime @default(now())
+
+  versions    RawPageVersion[]
+
+  @@index([domain])
+  @@map("raw_pages")
+}
+
+model RawPageVersion {
+  id          String   @id @default(uuid())
+
+  rawPageId   String
+  version     Int
+
+  htmlContent String   @db.Text
+  contentHash String
+  statusCode  Int
+
+  fetchedAt   DateTime @default(now())
+
+ rawPage RawPage @relation(fields: [rawPageId], references: [id])
+
+  @@unique([rawPageId, version])
+  @@index([contentHash])
+  @@map("raw_page_versions")
+}
