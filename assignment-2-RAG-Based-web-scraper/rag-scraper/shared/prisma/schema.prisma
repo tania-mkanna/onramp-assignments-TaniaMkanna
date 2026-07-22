@@ -1,11 +1,5 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 datasource db {
   provider = "postgresql"
-  url = env("DATABASE_URL")
 }
 
 generator client {
@@ -14,13 +8,12 @@ generator client {
 }
 
 model RawPage {
-  id          String   @id @default(uuid())
-  url         String   @unique
-  domain      String
-
-  fetchedAt   DateTime @default(now())
-
-  versions    RawPageVersion[]
+  id             String           @id @default(uuid())
+  url            String           @unique
+  domain         String
+  fetchedAt      DateTime         @default(now())
+  versions       RawPageVersion[]
+  processedPages ProcessedPage[]
 
   @@index([domain])
   @@map("raw_pages")
@@ -28,19 +21,34 @@ model RawPage {
 
 model RawPageVersion {
   id          String   @id @default(uuid())
-
   rawPageId   String
   version     Int
-
   htmlContent String   @db.Text
   contentHash String
   statusCode  Int
-
   fetchedAt   DateTime @default(now())
 
- rawPage RawPage @relation(fields: [rawPageId], references: [id])
+  processedPage ProcessedPage?
+
+  rawPage RawPage @relation(fields: [rawPageId], references: [id])
 
   @@unique([rawPageId, version])
   @@index([contentHash])
   @@map("raw_page_versions")
+}
+
+model ProcessedPage {
+  id               String   @id @default(uuid())
+  rawPageId        String
+  rawPageVersionId String   @unique
+  title            String
+  cleanedText      String   @db.Text
+  structuredData   Json // Stores extracted tables, headers, metadata JSON
+  processedAt      DateTime @default(now())
+
+  rawPage        RawPage        @relation(fields: [rawPageId], references: [id], onDelete: Cascade)
+  rawPageVersion RawPageVersion @relation(fields: [rawPageVersionId], references: [id])
+
+  @@index([rawPageId])
+  @@map("processed_pages")
 }

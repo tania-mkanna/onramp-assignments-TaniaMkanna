@@ -1,64 +1,34 @@
-import { fetchHTML } from "../src/crawler/httpCrawler.js";
-import { parseBooks } from "../src/parsers/bookParser.js";
+import { crawlQueue } from "./queues/crawlQueue.js";
+import { CrawlMode } from "./crawler/crawlerRouter.js";
 
-import { generateContentHash } from "../../shared/utils/hash.js";
-import { saveRawPage } from "../../shared/src/database/rawPageRepository.js";
+async function dispatchCrawlJob(url: string, mode: CrawlMode, maxDepth: number = 2) {
+  console.log(`[Producer] Dispatching root crawl task: ${url} (Mode: ${mode}, Max Depth: ${maxDepth})`);
 
-const url =
-  "https://books.toscrape.com/";
-
-async function main() {
-
-  try {
-
-    // 1. Fetch
-    const result =
-      await fetchHTML(url);
-
-    // 2. Generate hash
-    const contentHash =
-      generateContentHash(result.html);
-
-    // 3. Parse
-    const books =
-      parseBooks(result.html);
-
-    // 4. Save to database
-    await saveRawPage({
-
+  await crawlQueue.add(
+    "crawl-root",
+    {
       url,
-
-      domain:
-        new URL(url).hostname,
-
-      htmlContent:
-        result.html,
-
-      contentHash,
-
-      statusCode:
-        result.statusCode,
-
-    });
-
-    console.log(
-      "Books:",
-      books
-    );
-
-    console.log(
-      "Page saved successfully"
-    );
-
-  } catch (error) {
-
-    console.error(
-      "Scraping failed:",
-      error
-    );
-
-  }
-
+      mode,
+      depth: 1,
+      maxDepth,
+    },
+    {
+      jobId: Buffer.from(url).toString("base64"),
+    }
+  );
 }
 
-main();
+async function main() {
+  console.log("=== Launching RAG Web Scraper Dispatcher ===");
+
+  // 1. Site 1: Static Site (Books to Scrape)
+  await dispatchCrawlJob("https://books.toscrape.com/", CrawlMode.STATIC, 2);
+
+  // 2. Site 2: JS-Rendered SPA (Quotes JS)
+  await dispatchCrawlJob("https://quotes.toscrape.com/js/", CrawlMode.DYNAMIC, 1);
+
+  console.log("[Producer] All seed tasks dispatched to Redis queue.");
+  process.exit(0);
+}
+
+main().catch(console.error);
