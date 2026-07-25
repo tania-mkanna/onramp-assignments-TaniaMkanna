@@ -1,25 +1,46 @@
+import "dotenv/config";
 import { Queue } from "bullmq";
-import { redisConnection } from "./connection.js";
-import { CrawlMode } from "../crawler/crawlerRouter.js";
-
-export interface CrawlJobData {
-  url: string;
-  mode: CrawlMode;
-  depth: number;
-  maxDepth: number;
-}
 
 export const CRAWL_QUEUE_NAME = "crawl";
 
-export const crawlQueue = new Queue<CrawlJobData>(CRAWL_QUEUE_NAME, {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 3, // Retry up to 3 times on failure
-    backoff: {
-      type: "exponential",
-      delay: 2000, // Wait 2s, 4s, 8s between retries
+export const redisConnection = {
+  host: process.env.REDIS_HOST ?? "localhost",
+  port: Number(process.env.REDIS_PORT ?? 6379),
+};
+
+export interface CrawlJobData {
+  crawlSessionId: string;
+  pageId: string;
+  websiteId: string;
+  url: string;
+  normalizedUrl: string;
+  websiteName: string;
+  baseUrl: string;
+  depth: number;
+  useBrowser?: boolean;
+}
+
+export const crawlQueue = new Queue<CrawlJobData>(
+  CRAWL_QUEUE_NAME,
+  {
+    connection: redisConnection,
+
+    defaultJobOptions: {
+      attempts: 3,
+
+      backoff: {
+        type: "exponential",
+        delay: 2000,
+      },
+
+      removeOnComplete: {
+        age: 60 * 60,
+      },
+
+      // Keep failed jobs.
+      // This is useful for demonstrating
+      // retry and dead-letter handling later.
+      removeOnFail: false,
     },
-    removeOnComplete: 100, // Keep last 100 completed jobs for UI monitoring
-    removeOnFail: 500,     // Keep failed jobs in DLQ (Dead Letter Queue) state
   },
-});
+);

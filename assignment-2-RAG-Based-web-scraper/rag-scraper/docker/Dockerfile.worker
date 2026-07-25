@@ -1,0 +1,22 @@
+FROM node:20-bookworm
+
+WORKDIR /app
+
+# Copy package files first
+COPY api/package*.json ./api/
+COPY scraper/package*.json ./scraper/
+COPY processor/package*.json ./processor/
+COPY rag/package*.json ./rag/
+COPY shared/package*.json ./shared/
+
+# Install dependencies
+RUN npm install
+
+# Copy the whole project
+COPY . .
+
+# # Generate Prisma Client
+# RUN npx prisma generate --schema=shared/prisma/schema.prisma
+
+# Start the crawl worker
+CMD ["npx", "tsx", "scraper/src/workers/crawlWorker.ts"]

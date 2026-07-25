@@ -1,54 +1,139 @@
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
 }
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
-model RawPage {
-  id             String           @id @default(uuid())
-  url            String           @unique
-  domain         String
-  fetchedAt      DateTime         @default(now())
-  versions       RawPageVersion[]
-  processedPages ProcessedPage[]
-
-  @@index([domain])
-  @@map("raw_pages")
+enum PageStatus {
+  PENDING
+  SCRAPING
+  SUCCESS
+  FAILED
+}
+enum CrawlSessionStatus {
+  RUNNING
+  COMPLETED
+  FAILED
 }
 
-model RawPageVersion {
+model Website {
+  id        String   @id @default(uuid())
+  name      String
+  baseUrl   String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pages Page[]
+  crawlSessions CrawlSession[]
+
+  @@map("websites")
+}
+
+model CrawlSession {
+  id String @id @default(uuid())
+
+  websiteId String
+
+  maxPages Int
+  maxDepth Int
+
+  pagesDiscovered Int @default(0)
+  pagesCompleted Int @default(0)
+
+  status CrawlSessionStatus @default(RUNNING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  website Website @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([status])
+
+  @@map("crawl_sessions")
+}
+
+model Page {
+  id            String     @id @default(uuid())
+  websiteId     String
+  url           String
+  normalizedUrl String
+  lastCrawledAt DateTime?
+  status        PageStatus @default(PENDING)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  website  Website      @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  versions PageVersion[]
+
+  // A URL must be unique within a specific website.
+  @@unique([websiteId, normalizedUrl])
+
+  @@index([websiteId])
+  @@index([normalizedUrl])
+  @@index([status])
+
+  @@map("pages")
+}
+
+model PageVersion {
   id          String   @id @default(uuid())
-  rawPageId   String
+  pageId      String
   version     Int
   htmlContent String   @db.Text
   contentHash String
   statusCode  Int
+  contentType String?
   fetchedAt   DateTime @default(now())
 
-  processedPage ProcessedPage?
+  page              Page               @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  processedDocument ProcessedDocument?
 
-  rawPage RawPage @relation(fields: [rawPageId], references: [id])
+  // Prevent two versions with the same number for one page.
+  @@unique([pageId, version])
 
-  @@unique([rawPageId, version])
+  @@index([pageId])
   @@index([contentHash])
-  @@map("raw_page_versions")
+
+  @@map("page_versions")
 }
 
-model ProcessedPage {
-  id               String   @id @default(uuid())
-  rawPageId        String
-  rawPageVersionId String   @unique
-  title            String
-  cleanedText      String   @db.Text
-  structuredData   Json // Stores extracted tables, headers, metadata JSON
-  processedAt      DateTime @default(now())
+model ProcessedDocument {
+  id            String   @id @default(uuid())
+  pageVersionId String   @unique
+  title         String?
+  cleanedText   String   @db.Text
+  structuredData Json?
+  processedAt   DateTime @default(now())
 
-  rawPage        RawPage        @relation(fields: [rawPageId], references: [id], onDelete: Cascade)
-  rawPageVersion RawPageVersion @relation(fields: [rawPageVersionId], references: [id])
+  pageVersion PageVersion     @relation(fields: [pageVersionId], references: [id], onDelete: Cascade)
+  chunks      DocumentChunk[]
 
-  @@index([rawPageId])
-  @@map("processed_pages")
+  @@map("processed_documents")
+}
+
+model DocumentChunk {
+  id                  String   @id @default(uuid())
+  processedDocumentId String
+  chunkIndex          Int
+  content             String   @db.Text
+  sectionTitle        String?
+  tokenCount          Int
+
+  // OpenAI text-embedding-3-small uses 1536 dimensions.
+  embedding Unsupported("vector(1536)")?
+
+  createdAt DateTime @default(now())
+
+  processedDocument ProcessedDocument @relation(fields: [processedDocumentId], references: [id], onDelete: Cascade)
+
+  // Prevent duplicate chunk positions within one document.
+  @@unique([processedDocumentId, chunkIndex])
+  @@index([processedDocumentId])
+  @@map("document_chunks")
 }

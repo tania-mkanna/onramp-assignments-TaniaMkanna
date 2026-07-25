@@ -1,48 +1,105 @@
 import { prisma } from "./prisma.js";
 
-interface SaveRawPageInput {
+interface SavePageInput {
+  websiteName: string;
+  baseUrl: string;
+
   url: string;
-  domain: string;
+  normalizedUrl: string;
+
   htmlContent: string;
   contentHash: string;
   statusCode: number;
+  contentType?: string;
 }
 
-export async function saveRawPage(data: SaveRawPageInput) {
-  console.log("[DB] saveRawPage CALLED");
+export interface SaveDiscoveredPageInput {
+  websiteId: string;
+
+  url: string;
+  normalizedUrl: string;
+}
+
+export async function savePage(data: SavePageInput) {
+  console.log("[DB] savePage CALLED");
   console.log("[DB] URL:", data.url);
 
-  const rawPage = await prisma.rawPage.upsert({
+  // --------------------------------------------------
+  // 1. Find or create the website
+  // --------------------------------------------------
+
+  const website = await prisma.website.upsert({
     where: {
-      url: data.url,
+      baseUrl: data.baseUrl,
     },
-    update: {
-      fetchedAt: new Date(),
-    },
+
+    update: {},
+
     create: {
-      url: data.url,
-      domain: data.domain,
+      name: data.websiteName,
+      baseUrl: data.baseUrl,
     },
   });
 
-  console.log("[DB] RawPage created/found:", rawPage);
+  console.log("[DB] Website ID:", website.id);
 
-  const existingVersion = await prisma.rawPageVersion.findFirst({
+  // --------------------------------------------------
+  // 2. Find or create the page
+  // --------------------------------------------------
+
+  const page = await prisma.page.upsert({
     where: {
-      rawPageId: rawPage.id,
+      websiteId_normalizedUrl: {
+        websiteId: website.id,
+        normalizedUrl: data.normalizedUrl,
+      },
+    },
+
+    update: {
+      url: data.url,
+      lastCrawledAt: new Date(),
+      status: "SUCCESS",
+    },
+
+    create: {
+      websiteId: website.id,
+      url: data.url,
+      normalizedUrl: data.normalizedUrl,
+      lastCrawledAt: new Date(),
+      status: "SUCCESS",
+    },
+  });
+
+  console.log("[DB] Page ID:", page.id);
+
+  // --------------------------------------------------
+  // 3. Check if the exact content already exists
+  // --------------------------------------------------
+
+  const existingVersion = await prisma.pageVersion.findFirst({
+    where: {
+      pageId: page.id,
       contentHash: data.contentHash,
     },
   });
 
   if (existingVersion) {
-    console.log("[DB] Duplicate version. Skipping.");
+    console.log(
+      "[DB] Content has not changed. No new PageVersion created.",
+    );
+
     return existingVersion;
   }
 
-  const latestVersion = await prisma.rawPageVersion.findFirst({
+  // --------------------------------------------------
+  // 4. Find the latest version
+  // --------------------------------------------------
+
+  const latestVersion = await prisma.pageVersion.findFirst({
     where: {
-      rawPageId: rawPage.id,
+      pageId: page.id,
     },
+
     orderBy: {
       version: "desc",
     },
@@ -52,19 +109,112 @@ export async function saveRawPage(data: SaveRawPageInput) {
     ? latestVersion.version + 1
     : 1;
 
-  console.log("[DB] Creating version:", nextVersion);
+  console.log(
+    `[DB] Creating PageVersion ${nextVersion} for Page ${page.id}`,
+  );
 
-  const newVersion = await prisma.rawPageVersion.create({
+  // --------------------------------------------------
+  // 5. Create the new PageVersion
+  // --------------------------------------------------
+
+  const newVersion = await prisma.pageVersion.create({
     data: {
-      rawPageId: rawPage.id,
+      pageId: page.id,
       version: nextVersion,
       htmlContent: data.htmlContent,
       contentHash: data.contentHash,
       statusCode: data.statusCode,
+      contentType: data.contentType ?? null,
     },
   });
 
-  console.log("[DB] VERSION SAVED:", newVersion);
+  console.log(
+    "[DB] PageVersion saved:",
+    newVersion.id,
+  );
 
   return newVersion;
+}
+
+// ==================================================
+// Register a discovered URL
+// ==================================================
+export async function saveDiscoveredPage(
+  data: SaveDiscoveredPageInput,
+) {
+  console.log(
+    "[DB] Checking discovered URL:",
+    data.url,
+  );
+
+  // --------------------------------------------------
+  // 1. Make sure the Website exists
+  // --------------------------------------------------
+
+  const website = await prisma.website.findUnique({
+    where: {
+      id: data.websiteId,
+    },
+  });
+
+  if (!website) {
+    throw new Error(
+      `[DB] Website not found: ${data.websiteId}`,
+    );
+  }
+
+  // --------------------------------------------------
+  // 2. Check whether Page already exists
+  // --------------------------------------------------
+
+  const existingPage =
+    await prisma.page.findUnique({
+      where: {
+        websiteId_normalizedUrl: {
+          websiteId: data.websiteId,
+          normalizedUrl: data.normalizedUrl,
+        },
+      },
+    });
+
+  // --------------------------------------------------
+  // 3. Page already exists
+  // --------------------------------------------------
+
+  if (existingPage) {
+    console.log(
+      "[DB] Page already exists:",
+      existingPage.id,
+    );
+
+    return {
+      page: existingPage,
+      created: false,
+    };
+  }
+
+  // --------------------------------------------------
+  // 4. Create new PENDING Page
+  // --------------------------------------------------
+
+  const page =
+    await prisma.page.create({
+      data: {
+        websiteId: data.websiteId,
+        url: data.url,
+        normalizedUrl: data.normalizedUrl,
+        status: "PENDING",
+      },
+    });
+
+  console.log(
+    "[DB] Discovered Page created:",
+    page.id,
+  );
+
+  return {
+    page,
+    created: true,
+  };
+
 }

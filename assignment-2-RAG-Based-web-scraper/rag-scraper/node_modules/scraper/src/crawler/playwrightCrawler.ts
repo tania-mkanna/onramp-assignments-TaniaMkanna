@@ -1,59 +1,94 @@
-import { chromium} from "playwright";
-import type {Browser} from "playwright";
-import { canScrape } from "./robots.js";
-import type { FetchResult } from "./httpCrawler.js";
+import {
+  chromium,
+  type Browser,
+} from "playwright";
 
-let browserInstance: Browser | null = null;
+import type {
+  CrawlResult,
+} from "./httpCrawler.js";
+
+let browserInstance:
+  | Browser
+  | null = null;
 
 async function getBrowser(): Promise<Browser> {
-  if (!browserInstance || !browserInstance.isConnected()) {
-    browserInstance = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+  if (
+    !browserInstance ||
+    !browserInstance.isConnected()
+  ) {
+    browserInstance =
+      await chromium.launch({
+        headless: true,
+
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+        ],
+      });
   }
+
   return browserInstance;
 }
 
-export async function fetchDynamicHTML(url: string): Promise<FetchResult> {
-  // 1. Robots.txt Compliance Check
-  const allowed = await canScrape(url);
-  if (!allowed) {
-    throw new Error(`[Robots.txt] Scraping blocked for URL: ${url}`);
-  }
+export async function fetchDynamicHTML(
+  url: string,
+): Promise<CrawlResult> {
+  console.log(
+    `[Playwright Crawler] Fetching ${url}`,
+  );
 
-  const browser = await getBrowser();
-  const context = await browser.newContext({
-    userAgent: "rag-scraper-bot/1.0 (+https://github.com/your-repo)",
-  });
-  const page = await context.newPage();
+  const browser =
+    await getBrowser();
 
-  try {
-    // 2. Navigate and wait for network idle to ensure JS rendering finishes
-    const response = await page.goto(url, {
-      waitUntil: "networkidle",
-      timeout: 15000,
+  const context =
+    await browser.newContext({
+      userAgent:
+        "Distributed-RAG-Scraper/1.0",
     });
 
-    const statusCode = response ? response.status() : 200;
-    const html = await page.content();
+  const page =
+    await context.newPage();
 
-    await context.close();
+  try {
+    const response =
+      await page.goto(
+        url,
+        {
+          waitUntil:
+            "networkidle",
+
+          timeout:
+            15_000,
+        },
+      );
+
+    const html =
+      await page.content();
 
     return {
+      url,
+
       html,
-      statusCode,
+
+      statusCode:
+        response?.status() ?? 200,
+
+      contentType:
+        "text/html",
+
+      fetchedAt:
+        new Date(),
     };
-  } catch (error) {
+  } finally {
     await context.close();
-    console.error(`[Playwright Failure] Error fetching ${url}:`, error);
-    throw error;
   }
 }
 
-export async function closeBrowserSingleton(): Promise<void> {
+export async function closeBrowserSingleton() {
   if (browserInstance) {
     await browserInstance.close();
-    browserInstance = null;
+
+    browserInstance =
+      null;
   }
 }

@@ -1,10 +1,10 @@
 services:
 
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
 
     container_name: rag-postgres
-
+    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -26,6 +26,22 @@ services:
 
     volumes:
       - redis_data:/data
+  crawl-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+
+    restart: unless-stopped
+
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rag_scraper
+
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+    depends_on:
+      - postgres
+      - redis
 
 volumes:
   postgres_data:

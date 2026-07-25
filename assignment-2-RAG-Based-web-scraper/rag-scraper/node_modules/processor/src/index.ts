@@ -1,83 +1,147 @@
 import { prisma } from "../../shared/src/database/prisma.js";
-import { cleanAndExtractHTML } from "./cleaner/htmlCleaner.js";
-import { saveProcessedPage } from "../../shared/src/database/processedPageRepository.js";
 
-export async function processUnprocessedPages() {
-  console.log("=== [Processor] Scanning for Unprocessed Raw Pages ===");
+import {
+  cleanAndExtractHTML
+} from "./cleaner/htmlCleaner.js";
 
-  // Find raw page versions that do not have a corresponding entry in processed_pages
-  const processedVersions = await prisma.processedPage.findMany({
-    select: {
-      rawPageVersionId: true,
-    },
-  });
+import {
+  saveProcessedDocument
+} from "../../shared/src/database/processedPageRepository.js";
 
-  const processedVersionIds = processedVersions.map(
-    (p) => p.rawPageVersionId
-  );
 
-  const unprocessedVersions = await prisma.rawPageVersion.findMany({
-    where: {
-      id: {
-        notIn: processedVersionIds,
-      },
-    },
-    include: {
-      rawPage: true,
-    },
-    take: 50,
-  });
+const BATCH_SIZE = 50;
+
+
+export async function processUnprocessedDocuments(){
 
   console.log(
-    `[Processor] Found ${unprocessedVersions.length} unprocessed page versions.`
+    "=== Processor Started ==="
   );
 
-  let successCount = 0;
-  let failureCount = 0;
 
-  for (const version of unprocessedVersions) {
-    try {
+  const unprocessedVersions =
+    await prisma.pageVersion.findMany({
+
+      where:{
+        processedDocument:{
+          is:null
+        }
+      },
+
+      include:{
+        page:{
+          select:{
+            id:true,
+            url:true,
+            websiteId:true
+          }
+        }
+      },
+
+      orderBy:{
+        fetchedAt:"asc"
+      },
+
+      take:BATCH_SIZE
+    });
+
+
+
+  console.log(
+    `Found ${unprocessedVersions.length} documents`
+  );
+
+
+  let success = 0;
+  let failed = 0;
+
+
+
+  for(const version of unprocessedVersions){
+
+    try{
+
       console.log(
-        `[Processor] Processing Raw Version ID: ${version.id} (${version.rawPage.url})`
+        `Processing ${version.page.url}`
       );
 
-      const { cleanedText, structuredPayload } =
-        cleanAndExtractHTML(version.htmlContent);
 
-      await saveProcessedPage({
-        rawPageId: version.rawPageId,
-        rawPageVersionId: version.id,
-        title: structuredPayload.title,
+      const {
         cleanedText,
-        structuredPayload,
+        structuredPayload
+
+      } =
+      cleanAndExtractHTML(
+        version.htmlContent
+      );
+
+
+
+      const document =
+      await saveProcessedDocument({
+
+        pageVersionId:
+          version.id,
+
+        title:
+          structuredPayload.title,
+
+        cleanedText,
+
+        structuredData:
+          structuredPayload
+
       });
 
+
+
       console.log(
-        `[Processor Success] Saved clean structured data for: ${structuredPayload.title}`
+        "Saved:",
+        document.id
       );
 
-      successCount++;
-    } catch (error) {
+
+      success++;
+
+
+    }catch(error){
+
       console.error(
-        `[Processor Failure] Failed processing version ${version.id}:`,
-        error
+        "Processing failed:",
+        version.id
       );
 
-      failureCount++;
+      console.error(error);
+
+      failed++;
     }
   }
 
+
+
   console.log(
-    `=== [Processor Complete] Processed: ${successCount} | Failed: ${failureCount} ===`
+    "=== Processor Finished ==="
   );
+
+  console.log({
+    success,
+    failed
+  });
+
 }
 
-// Run processor directly
-processUnprocessedPages()
-  .then(() => {
-    process.exit(0);
-  })
-  .catch((err) => {
-    console.error("Processor run failed:", err);
-    process.exit(1);
-  });
+
+
+processUnprocessedDocuments()
+.then(()=>{
+
+  process.exit(0);
+
+})
+.catch(error=>{
+
+  console.error(error);
+
+  process.exit(1);
+
+});

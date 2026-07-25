@@ -1,51 +1,63 @@
 import axios from "axios";
-import { canScrape } from "./robots.js";
 
-export interface FetchResult {
-    html: string;
-    statusCode: number;
+export interface CrawlResult {
+  url: string;
+  html: string;
+  statusCode: number;
+  contentType?: string;
+  fetchedAt: Date;
 }
 
-export async function fetchHTML(
-    url: string
-): Promise<FetchResult> {
+export async function crawlHttp(
+  url: string,
+): Promise<CrawlResult> {
+  console.log(
+    `[HTTP Crawler] Fetching ${url}`,
+  );
 
-    // 1. Check robots.txt
-    const allowed = await canScrape(url);
+  const response =
+    await axios.get<string>(
+      url,
+      {
+        headers: {
+          "User-Agent":
+            "Distributed-RAG-Scraper/1.0",
+        },
 
-    if (!allowed) {
-        throw new Error(
-            "Blocked by robots.txt"
-        );
-    }
+        timeout: 10_000,
 
-    // 2. Fetch the page
-    try {
+        // We want to receive the HTTP response
+        // even for 4xx and 5xx statuses.
+        validateStatus: () => true,
+      },
+    );
 
-        const response = await axios.get<string>(
-            url,
-            {
-                timeout: 5000,
+  const contentType =
+    response.headers[
+      "content-type"
+    ];
 
-                headers: {
-                    "User-Agent": "rag-scraper-bot"
-                }
-            }
-        );
+  return {
+    url,
 
-        // 3. Return HTML + HTTP status
-        return {
-            html: response.data,
-            statusCode: response.status
-        };
+    html:
+      typeof response.data === "string"
+        ? response.data
+        : JSON.stringify(
+            response.data,
+          ),
 
-    } catch (error) {
+    statusCode:
+      response.status,
 
-        console.log(
-            "Failed fetching:",
-            url
-        );
+    ...(contentType
+      ? {
+          contentType:
+            String(contentType),
+        }
+      : {}),
 
-        throw error;
-    }
+    fetchedAt:
+      new Date(),
+  };
 }

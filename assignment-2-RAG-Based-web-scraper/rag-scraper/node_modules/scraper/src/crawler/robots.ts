@@ -1,42 +1,93 @@
-import { createRequire } from "module";
+import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
 const robotsParser = require("robots-parser");
 
+type Robots = {
+  isAllowed: (
+    url: string,
+    userAgent: string,
+  ) => boolean | undefined;
+};
 
-export async function canScrape(url: string): Promise<boolean> {
+const robotsCache =
+  new Map<string, Robots | null>();
 
-    const robotsUrl = new URL("/robots.txt", url).href;
+const USER_AGENT =
+  "Distributed-RAG-Scraper/1.0";
 
-    try {
-        const response = await fetch(robotsUrl);
+export async function canScrape(
+  url: string,
+): Promise<boolean> {
+  const parsedUrl = new URL(url);
 
-        // No robots.txt file exists
-        if (response.status === 404) {
-            console.log("No robots.txt found. Allowing crawl.");
-            return true;
-        }
+  const origin = parsedUrl.origin;
 
-        const robotsText = await response.text();
+  let robots = robotsCache.get(origin);
 
-        const robots = robotsParser(
-            robotsUrl,
-            robotsText
-        );
+  // robots.txt was already fetched.
+  if (robotsCache.has(origin)) {
+    return (
+      robots?.isAllowed(
+        url,
+        USER_AGENT,
+      ) ?? true
+    );
+  }
 
-        return robots.isAllowed(
-            url,
-            "rag-scraper-bot"
-        ) ?? false;
+  const robotsUrl =
+    `${origin}/robots.txt`;
 
+  try {
+    const response =
+      await fetch(robotsUrl);
 
-    } catch (error) {
-        console.error(
-            "Failed to check robots.txt:",
-            error
-        );
+    // No robots.txt means there are
+    // no robots rules to apply.
+    if (response.status === 404) {
+      robotsCache.set(origin, null);
 
-        return false;
+      return true;
     }
+
+    // If robots.txt cannot be fetched,
+    // fail closed for safety.
+    if (!response.ok) {
+      throw new Error(
+        `robots.txt returned HTTP ${response.status}`,
+      );
+    }
+
+    const text =
+      await response.text();
+
+    const parsedRobots =
+      robotsParser(
+        robotsUrl,
+        text,
+      );
+
+    robotsCache.set(
+      origin,
+      parsedRobots,
+    );
+
+    return (
+      parsedRobots.isAllowed(
+        url,
+        USER_AGENT,
+      ) ?? false
+    );
+  } catch (error) {
+    console.error(
+      `[Robots] Failed to read ${robotsUrl}`,
+      error,
+    );
+
+    // Conservative behaviour:
+    // do not crawl if robots.txt
+    // cannot be checked.
+    return false;
+  }
 }
