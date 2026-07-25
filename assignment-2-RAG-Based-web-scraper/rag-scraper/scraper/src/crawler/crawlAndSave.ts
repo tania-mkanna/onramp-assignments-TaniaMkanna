@@ -100,6 +100,9 @@ export async function crawlAndSavePage(
       websiteId:
         website.id,
 
+      crawlSessionId:
+        page.id,
+
       url:
         page.url,
 
@@ -111,6 +114,9 @@ export async function crawlAndSavePage(
 
       baseUrl:
         website.baseUrl,
+
+      depth:
+        0,
 
       useBrowser:
         data.useBrowser ?? false,

@@ -2,6 +2,8 @@ FROM node:20-bookworm
 
 WORKDIR /app
 
+COPY package*.json ./
+
 # Copy package files first
 COPY api/package*.json ./api/
 COPY scraper/package*.json ./scraper/
@@ -15,8 +17,13 @@ RUN npm install
 # Copy the whole project
 COPY . .
 
-# # Generate Prisma Client
-# RUN npx prisma generate --schema=shared/prisma/schema.prisma
+# 5. Generate Prisma Client — must happen inside the container so the
+#    native query engine binary matches this Linux/Debian environment
+RUN npx prisma generate --schema=shared/prisma/schema.prisma
+
+# 6. Playwright needs its browser binaries downloaded — required since
+#    your crawler uses playwrightCrawler.ts for JS-rendered sites
+RUN npx playwright install --with-deps chromium
 
 # Start the crawl worker
 CMD ["npx", "tsx", "scraper/src/workers/crawlWorker.ts"]
