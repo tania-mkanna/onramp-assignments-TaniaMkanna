@@ -9,3 +9,6 @@ build
 coverage
 .vscode
 .idea
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.agents
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.claude
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.windsurf
