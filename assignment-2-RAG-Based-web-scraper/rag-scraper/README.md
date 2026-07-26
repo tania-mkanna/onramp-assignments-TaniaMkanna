@@ -182,15 +182,11 @@ http://localhost:5173
 
 1. Open the UI in the browser
 2. Enter a website URL
-3. Choose crawl mode:
-- `STATIC` for normal HTML pages
-- `DYNAMIC` for JavaScript-rendered pages
-4. Set `maxDepth` and `maxPages`
-5. Click `Start scraping`
-6. Wait until the crawl status shows progress and the `Processed` / `Chunks` counters begin increasing
-7. Enter a question about the crawled website
-8. Click `Ask question`
-9. Read the answer and check the returned source citations
+3. Click `Start scraping`
+4. Wait until the crawl status shows progress and the `Processed` / `Chunks` counters begin increasing
+5. Enter a question about the crawled website
+6. Click `Ask question`
+7. Read the answer and check the returned source citations
 
 ## API Endpoints
 
