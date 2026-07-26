@@ -1,0 +1,568 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  background:
+    #f5f7fa;
+
+  color:
+    #17202a;
+}
+
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+
+.site-console {
+  min-height: 100vh;
+  padding: 48px 20px;
+}
+
+
+.console-container {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.console-header {
+  margin-bottom: 32px;
+}
+
+
+.eyebrow {
+  margin: 0 0 10px;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  letter-spacing: 0.12em;
+
+  color:
+    #667085;
+}
+
+
+.console-header h1 {
+  margin: 0;
+
+  font-size: 38px;
+
+  line-height: 1.15;
+
+  letter-spacing: -0.03em;
+}
+
+
+.subtitle {
+  max-width: 680px;
+
+  margin-top: 16px;
+
+  color:
+    #667085;
+
+  font-size: 16px;
+
+  line-height: 1.6;
+}
+
+
+/* ============================================================
+   PANELS
+   ============================================================ */
+
+.panel,
+.answer-panel {
+  margin-bottom: 20px;
+
+  padding: 28px;
+
+  background:
+    #ffffff;
+
+  border:
+    1px solid #e4e7ec;
+
+  border-radius:
+    16px;
+
+  box-shadow:
+    0 4px 16px rgba(
+      16,
+      24,
+      40,
+      0.04
+    );
+}
+
+
+.panel-header,
+.answer-header {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  margin-bottom: 24px;
+}
+
+
+.panel-header h2,
+.answer-header h2 {
+  margin: 0;
+
+  font-size: 20px;
+}
+
+
+.step-number {
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  width: 32px;
+
+  height: 32px;
+
+  border-radius: 8px;
+
+  background:
+    #eef2ff;
+
+  color:
+    #4f46e5;
+
+  font-size: 12px;
+
+  font-weight: 700;
+}
+
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+
+label {
+  display: block;
+
+  margin-bottom: 8px;
+
+  font-size: 14px;
+
+  font-weight: 600;
+}
+
+
+.input-row {
+  display: flex;
+
+  gap: 12px;
+}
+
+
+input,
+textarea {
+  width: 100%;
+
+  padding: 13px 15px;
+
+  border:
+    1px solid #d0d5dd;
+
+  border-radius:
+    10px;
+
+  outline: none;
+
+  background:
+    #ffffff;
+
+  color:
+    #101828;
+
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+
+input:focus,
+textarea:focus {
+  border-color:
+    #6366f1;
+
+  box-shadow:
+    0 0 0 3px
+    rgba(
+      99,
+      102,
+      241,
+      0.12
+    );
+}
+
+
+textarea {
+  resize: vertical;
+
+  min-height: 110px;
+}
+
+
+button {
+  border: 0;
+
+  border-radius:
+    10px;
+
+  padding:
+    13px 20px;
+
+  background:
+    #4f46e5;
+
+  color:
+    #ffffff;
+
+  font-weight:
+    600;
+
+  cursor:
+    pointer;
+
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+
+button:hover:not(:disabled) {
+  transform:
+    translateY(-1px);
+}
+
+
+button:disabled {
+  opacity:
+    0.5;
+
+  cursor:
+    not-allowed;
+}
+
+
+.ask-button {
+  margin-top: 16px;
+
+  width: 100%;
+}
+
+
+/* ============================================================
+   STATUS
+   ============================================================ */
+
+.status {
+  display: flex;
+
+  align-items: center;
+
+  gap: 10px;
+
+  margin-top: 18px;
+
+  padding: 12px 14px;
+
+  border-radius: 8px;
+
+  font-size: 14px;
+}
+
+
+.status-loading {
+  background:
+    #f2f4f7;
+
+  color:
+    #475467;
+}
+
+
+.status-success {
+  background:
+    #ecfdf3;
+
+  color:
+    #027a48;
+}
+
+
+.status-dot {
+  width: 8px;
+
+  height: 8px;
+
+  border-radius: 50%;
+
+  background:
+    currentColor;
+}
+
+
+.session-id {
+  margin-top: 12px;
+
+  color:
+    #667085;
+
+  font-size: 12px;
+}
+
+
+.session-id code {
+  margin-left: 6px;
+
+  padding: 3px 6px;
+
+  background:
+    #f2f4f7;
+
+  border-radius: 4px;
+}
+
+
+/* ============================================================
+   ERRORS
+   ============================================================ */
+
+.error-message {
+  margin-bottom: 20px;
+
+  padding: 14px 16px;
+
+  border:
+    1px solid #fecdca;
+
+  border-radius:
+    10px;
+
+  background:
+    #fef3f2;
+
+  color:
+    #b42318;
+
+  font-size: 14px;
+}
+
+
+/* ============================================================
+   ANSWER
+   ============================================================ */
+
+.answer-content {
+  padding:
+    20px;
+
+  border-radius:
+    10px;
+
+  background:
+    #f8f9fc;
+
+  line-height:
+    1.7;
+
+  white-space:
+    pre-wrap;
+}
+
+
+.answer-content p {
+  margin:
+    0;
+}
+
+
+/* ============================================================
+   SOURCES
+   ============================================================ */
+
+.sources {
+  margin-top:
+    28px;
+}
+
+
+.sources h3 {
+  margin:
+    0 0 14px;
+
+  font-size:
+    16px;
+}
+
+
+.source-list {
+  display:
+    flex;
+
+  flex-direction:
+    column;
+
+  gap:
+    10px;
+}
+
+
+.source-card {
+  display:
+    flex;
+
+  gap:
+    12px;
+
+  padding:
+    14px;
+
+  border:
+    1px solid #e4e7ec;
+
+  border-radius:
+    10px;
+}
+
+
+.source-number {
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  flex-shrink:
+    0;
+
+  width:
+    26px;
+
+  height:
+    26px;
+
+  border-radius:
+    50%;
+
+  background:
+    #f2f4f7;
+
+  font-size:
+    12px;
+
+  font-weight:
+    700;
+}
+
+
+.source-card h4 {
+  margin:
+    0 0 5px;
+
+  font-size:
+    14px;
+}
+
+
+.source-card a {
+  color:
+    #4f46e5;
+
+  font-size:
+    13px;
+
+  word-break:
+    break-all;
+}
+
+
+.source-card p {
+  margin:
+    8px 0 0;
+
+  color:
+    #667085;
+
+  font-size:
+    13px;
+
+  line-height:
+    1.5;
+}
+
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (
+  max-width: 640px
+) {
+
+  .site-console {
+    padding:
+      24px 14px;
+  }
+
+
+  .console-header h1 {
+    font-size:
+      30px;
+  }
+
+
+  .panel,
+  .answer-panel {
+    padding:
+      20px;
+  }
+
+
+  .input-row {
+    flex-direction:
+      column;
+  }
+
+
+  .input-row button {
+    width:
+      100%;
+  }
+
+}

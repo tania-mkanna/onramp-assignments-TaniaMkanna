@@ -1,0 +1,14 @@
+assignment-2-RAG-Based-web-scraper/rag-scraper/node_modules 
+npm-debug.log
+.git
+.gitignore
+.env
+.env.*
+dist
+build
+coverage
+.vscode
+.idea
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.agents
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.claude
+assignment-2-RAG-Based-web-scraper/rag-scraper/shared/.windsurf
