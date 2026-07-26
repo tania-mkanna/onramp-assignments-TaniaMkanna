@@ -24,7 +24,8 @@ import {
 
 import {
   getCrawlSession,
-  incrementPagesDiscovered,
+  reserveDiscoveredPageSlot,
+  decrementPagesDiscovered,
   incrementPagesCompleted,
   completeCrawlSession,
 } from "../../../shared/src/database/crawlSessionRepository.js";
@@ -42,8 +43,8 @@ import {
 } from "../crawler/urlFilter.js";
 
 import {
-  processPageVersion,
-} from "../../../processor/src/services/processorService.js";
+  enqueueProcessingJob,
+} from "../queues/processingProducer.js";
 
 
 // =================================================
@@ -147,7 +148,7 @@ async function processCrawlJob(
   // =================================================
 
   if (
-    session.pagesDiscovered >
+    session.pagesDiscovered >=
     session.maxPages
   ) {
 
@@ -272,18 +273,23 @@ async function processCrawlJob(
     `[CrawlWorker] PageVersion saved: ${pageVersion.id}`,
   );
 
-// -----------------------------------------------
-// 7. Process saved page version
-// -----------------------------------------------
+  // -----------------------------------------------
+  // 7. Queue processing for cleaned/indexed pipeline
+  // -----------------------------------------------
 
-const processedDocument =
-  await processPageVersion(
-    pageVersion.id,
+  await enqueueProcessingJob({
+    pageVersionId:
+      pageVersion.id,
+    pageId,
+    websiteId,
+    websiteName,
+    url,
+    normalizedUrl,
+  });
+
+  console.log(
+    `[CrawlWorker] Processing queued for PageVersion: ${pageVersion.id}`,
   );
-
-console.log(
-  `[CrawlWorker] ProcessedDocument: ${processedDocument.processedDocumentId}`,
-);
   // =================================================
   // 7. MARK CURRENT PAGE AS COMPLETED
   // =================================================
@@ -528,9 +534,18 @@ console.log(
     // 11.7 INCREMENT DISCOVERED COUNT
     // -----------------------------------------------
 
-    await incrementPagesDiscovered(
-      crawlSessionId,
-    );
+    const reservedSlot =
+      await reserveDiscoveredPageSlot(
+        crawlSessionId,
+      );
+
+    if (!reservedSlot) {
+      console.log(
+        `[CrawlWorker] Max pages reached while discovering links.`,
+      );
+
+      break;
+    }
 
 
     newPages++;
@@ -545,32 +560,42 @@ console.log(
     // 11.8 ADD NEW PAGE TO QUEUE
     // -----------------------------------------------
 
-    const newJob =
-      await enqueueCrawlJob({
+    let newJob;
 
+    try {
+      newJob =
+        await enqueueCrawlJob({
+
+          crawlSessionId,
+
+          pageId:
+            discovered.page.id,
+
+          websiteId,
+
+          url:
+            discovered.page.url,
+
+          normalizedUrl:
+            discovered.page.normalizedUrl,
+
+          websiteName,
+
+          baseUrl,
+
+          depth:
+            depth + 1,
+
+          useBrowser,
+
+        });
+    } catch (error) {
+      await decrementPagesDiscovered(
         crawlSessionId,
+      );
 
-        pageId:
-          discovered.page.id,
-
-        websiteId,
-
-        url:
-          discovered.page.url,
-
-        normalizedUrl:
-          discovered.page.normalizedUrl,
-
-        websiteName,
-
-        baseUrl,
-
-        depth:
-          depth + 1,
-
-        useBrowser,
-
-      });
+      throw error;
+    }
 
 
     console.log(
@@ -692,7 +717,7 @@ crawlWorker.on(
 
   "completed",
 
-  (job) => {
+  (job: Job<CrawlJobData>) => {
 
     console.log(
       `[CrawlWorker] Completed job ${job.id}`,
@@ -711,7 +736,7 @@ crawlWorker.on(
 
   "failed",
 
-  (job, error) => {
+  (job: Job<CrawlJobData> | undefined, error: Error) => {
 
     console.error(
       `[CrawlWorker] Failed job ${job?.id}`,
@@ -734,7 +759,7 @@ crawlWorker.on(
 
   "error",
 
-  (error) => {
+  (error: Error) => {
 
     console.error(
       "[CrawlWorker] Worker error:",

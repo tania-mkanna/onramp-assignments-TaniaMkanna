@@ -109,6 +109,16 @@ export async function saveDocumentChunk(data: {
   );
 }
 
+export async function deleteChunksForProcessedDocument(
+  processedDocumentId: string,
+) {
+  await prisma.documentChunk.deleteMany({
+    where: {
+      processedDocumentId,
+    },
+  });
+}
+
 /**
  * Search for semantically similar document chunks.
  *

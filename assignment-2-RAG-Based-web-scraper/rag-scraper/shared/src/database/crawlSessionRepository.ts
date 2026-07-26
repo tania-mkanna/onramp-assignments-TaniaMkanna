@@ -76,6 +76,33 @@ export async function incrementPagesDiscovered(
     },
   });
 }
+
+// =================================================
+// RESERVE DISCOVERED PAGE SLOT (ATOMIC)
+// =================================================
+
+export async function reserveDiscoveredPageSlot(
+  sessionId: string,
+) {
+  const updateResult =
+    await prisma.crawlSession.updateMany({
+      where: {
+        id: sessionId,
+        status: "RUNNING",
+        pagesDiscovered: {
+          lt: prisma.crawlSession.fields.maxPages,
+        },
+      },
+
+      data: {
+        pagesDiscovered: {
+          increment: 1,
+        },
+      },
+    });
+
+  return updateResult.count > 0;
+}
 // =================================================
 // INCREMENT PAGES COMPLETED
 // =================================================
@@ -91,6 +118,26 @@ export async function incrementPagesCompleted(
     data: {
       pagesCompleted: {
         increment: 1,
+      },
+    },
+  });
+}
+
+// =================================================
+// DECREMENT PAGES DISCOVERED
+// =================================================
+
+export async function decrementPagesDiscovered(
+  sessionId: string,
+) {
+  return prisma.crawlSession.update({
+    where: {
+      id: sessionId,
+    },
+
+    data: {
+      pagesDiscovered: {
+        decrement: 1,
       },
     },
   });

@@ -12,6 +12,10 @@ import {
   prisma,
 } from "../../../shared/src/database/prisma.js";
 
+import {
+  indexProcessedDocument,
+} from "../../../rag/src/indexingService.js";
+
 
 // =================================================
 // PROCESS PAGE VERSION
@@ -173,6 +177,20 @@ export async function processPageVersion(
 
   console.log(
     `[ProcessedService] ProcessedDocument saved: ${processedDocument.id}`,
+  );
+
+  const indexingResult =
+    await indexProcessedDocument({
+      processedDocumentId:
+        processedDocument.id,
+      cleanedText:
+        cleaned.cleanedText,
+      sectionTitle:
+        cleaned.structuredPayload.title,
+    });
+
+  console.log(
+    `[ProcessedService] Indexed ${indexingResult.chunkCount} chunks`,
   );
 
 

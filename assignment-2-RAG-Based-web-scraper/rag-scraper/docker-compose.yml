@@ -43,6 +43,24 @@ services:
       - postgres
       - redis
 
+  processing-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+
+    restart: unless-stopped
+
+    command: ["npx", "tsx", "scraper/src/workers/processingWorker.ts"]
+
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/rag_scraper
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+    depends_on:
+      - postgres
+      - redis
+
 volumes:
   postgres_data:
   redis_data:

@@ -6,16 +6,8 @@ import {
 } from "bullmq";
 
 import {
-  prisma,
-} from "../../../shared/src/database/prisma.js";
-
-import {
-  cleanAndExtractHTML,
-} from "../processor/htmlCleaner.js";
-
-import {
-  upsertProcessedDocument,
-} from "../../../shared/src/database/processedDocumentRepository.js";
+  processPageVersion,
+} from "../../../processor/src/services/processorService.js";
 
 import type {
   ProcessingJobData,
@@ -76,93 +68,14 @@ async function processProcessingJob(
   );
 
 
-  // -----------------------------------------------
-  // 1. Load PageVersion
-  // -----------------------------------------------
-
-  const pageVersion =
-    await prisma.pageVersion.findUnique({
-      where: {
-        id:
-          pageVersionId,
-      },
-    });
-
-
-  if (!pageVersion) {
-    throw new Error(
-      `PageVersion not found: ${pageVersionId}`,
-    );
-  }
-
-
-  console.log(
-    `[ProcessingWorker] Loaded PageVersion ${pageVersion.id}`,
-  );
-
-
-  // -----------------------------------------------
-  // 2. Clean and extract HTML
-  // -----------------------------------------------
-
-  const processed =
-    cleanAndExtractHTML(
-      pageVersion.htmlContent,
+  const processedResult =
+    await processPageVersion(
+      pageVersionId,
     );
 
 
   console.log(
-    `[ProcessingWorker] HTML cleaned successfully`,
-  );
-
-
-  console.log(
-    `[ProcessingWorker] Title: ${processed.structuredPayload.title}`,
-  );
-
-
-  console.log(
-    `[ProcessingWorker] Word count: ${processed.structuredPayload.metadata.wordCount}`,
-  );
-
-
-  console.log(
-    `[ProcessingWorker] Headings: ${processed.structuredPayload.headings.length}`,
-  );
-
-
-  console.log(
-    `[ProcessingWorker] Paragraphs: ${processed.structuredPayload.paragraphs.length}`,
-  );
-
-
-  console.log(
-    `[ProcessingWorker] Tables: ${processed.structuredPayload.tables.length}`,
-  );
-
-
-  // -----------------------------------------------
-  // 3. Save ProcessedDocument
-  // -----------------------------------------------
-
-  const processedDocument =
-    await upsertProcessedDocument({
-      pageVersionId:
-        pageVersion.id,
-
-      title:
-        processed.structuredPayload.title,
-
-      cleanedText:
-        processed.cleanedText,
-
-      structuredData:
-        processed.structuredPayload,
-    });
-
-
-  console.log(
-    `[ProcessingWorker] ProcessedDocument saved: ${processedDocument.id}`,
+    `[ProcessingWorker] ProcessedDocument saved: ${processedResult.processedDocument.id}`,
   );
 
 
@@ -172,10 +85,10 @@ async function processProcessingJob(
 
   return {
     processedDocumentId:
-      processedDocument.id,
+      processedResult.processedDocument.id,
 
     pageVersionId:
-      pageVersion.id,
+      pageVersionId,
 
     pageId,
 
@@ -188,7 +101,7 @@ async function processProcessingJob(
     normalizedUrl,
 
     wordCount:
-      processed.structuredPayload.metadata.wordCount,
+      processedResult.structuredPayload.metadata.wordCount,
   };
 }
 
@@ -222,7 +135,7 @@ export const processingWorker =
 
 processingWorker.on(
   "completed",
-  (job) => {
+  (job: Job<ProcessingJobData>) => {
     console.log(
       `[ProcessingWorker] Completed job ${job.id}`,
     );
@@ -232,7 +145,7 @@ processingWorker.on(
 
 processingWorker.on(
   "failed",
-  (job, error) => {
+  (job: Job<ProcessingJobData> | undefined, error: Error) => {
     console.error(
       `[ProcessingWorker] Failed job ${job?.id}`,
     );
@@ -246,7 +159,7 @@ processingWorker.on(
 
 processingWorker.on(
   "error",
-  (error) => {
+  (error: Error) => {
     console.error(
       "[ProcessingWorker] Worker error:",
       error,
