@@ -1,90 +1,89 @@
 import "dotenv/config";
 
 import { prisma } from "../../shared/src/database/prisma.js";
-import { crawlQueue } from "./queues/crawlQueue.js";
-import { normalizeUrl } from "./crawler/urlNormalizer.js";
 
-async function testQueue() {
-  console.log("=== Queue Test Started ===");
+import { createCrawlSession } from "../../shared/src/database/crawlSessionRepository.js";
 
-  const websiteName = "Books to Scrape";
-  const baseUrl = "https://books.toscrape.com/";
-  const url = "https://books.toscrape.com/";
+import { enqueueCrawlJob } from "./queues/crawlProducer.js";
 
-  // 1. Find or create website
-  const website = await prisma.website.upsert({
+async function main() {
+  console.log("=== Multiple Workers Test ===");
+
+  // ------------------------------------
+  // Get website
+  // ------------------------------------
+
+  const website = await prisma.website.findFirst();
+
+  if (!website) {
+    throw new Error("No website found.");
+  }
+
+  console.log("Website:", website.name);
+
+  // ------------------------------------
+  // Get first page
+  // ------------------------------------
+
+  const page = await prisma.page.findFirst({
     where: {
-      baseUrl,
-    },
-    update: {},
-    create: {
-      name: websiteName,
-      baseUrl,
-    },
-  });
-
-  console.log("[Test] Website ID:", website.id);
-
-  // 2. Normalize URL
-  const normalizedUrl = normalizeUrl(url);
-
-  // 3. Find or create page
-  const page = await prisma.page.upsert({
-    where: {
-      websiteId_normalizedUrl: {
-        websiteId: website.id,
-        normalizedUrl,
-      },
-    },
-    update: {
-      status: "PENDING",
-    },
-    create: {
       websiteId: website.id,
-      url,
-      normalizedUrl,
-      status: "PENDING",
     },
   });
 
-  console.log("[Test] Page ID:", page.id);
+  if (!page) {
+    throw new Error("No page found.");
+  }
 
-  // 4. Add job
-  const job = await crawlQueue.add(
-    "crawl-page",
-    {
+  console.log("Seed page:", page.url);
+
+  // ------------------------------------
+  // Create crawl session
+  // ------------------------------------
+
+  const session = await createCrawlSession({
+    websiteId: website.id,
+    maxPages: 3,
+    maxDepth: 2,
+  });
+
+  console.log("Session:", session.id);
+
+  // ------------------------------------
+  // Add MANY jobs
+  // ------------------------------------
+
+  const NUMBER_OF_JOBS = 20;
+
+  for (let i = 0; i < NUMBER_OF_JOBS; i++) {
+    const job = await enqueueCrawlJob({
+      crawlSessionId: session.id,
+
       pageId: page.id,
-      url: page.url,
-      normalizedUrl: page.normalizedUrl,
+
       websiteId: website.id,
+
+      url: page.url,
+
+      normalizedUrl: page.normalizedUrl,
+
       websiteName: website.name,
+
       baseUrl: website.baseUrl,
+
+      depth: 0,
+
       useBrowser: false,
-    },
-    {
-      jobId: `test-crawl-${page.id}-${Date.now()}`,
+    });
 
-      attempts: 3,
+    console.log(`Job ${i + 1} -> ${job.id}`);
+  }
 
-      backoff: {
-        type: "exponential",
-        delay: 2000,
-      },
-    },
-  );
-
-  console.log("[Test] Job ID:", job.id);
-
-  console.log("=== Queue Test Finished ===");
-
-  await prisma.$disconnect();
+  console.log(`\n${NUMBER_OF_JOBS} jobs added.`);
 }
 
-testQueue()
-  .catch(async (error) => {
-    console.error("[Test] Failed:", error);
-
+main()
+  .catch(console.error)
+  .finally(async () => {
     await prisma.$disconnect();
-
-    process.exit(1);
   });

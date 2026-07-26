@@ -17,6 +17,20 @@ const robotsCache =
 const USER_AGENT =
   "Distributed-RAG-Scraper/1.0";
 
+// Single source of truth for how we interpret an
+// ambiguous (undefined) result from isAllowed().
+// Convention: no matching rule = allowed.
+function checkAllowed(
+  robots: Robots | null,
+  url: string,
+): boolean {
+  if (!robots) {
+    return true;
+  }
+
+  return robots.isAllowed(url, USER_AGENT) ?? true;
+}
+
 export async function canScrape(
   url: string,
 ): Promise<boolean> {
@@ -24,16 +38,11 @@ export async function canScrape(
 
   const origin = parsedUrl.origin;
 
-  let robots = robotsCache.get(origin);
-
   // robots.txt was already fetched.
   if (robotsCache.has(origin)) {
-    return (
-      robots?.isAllowed(
-        url,
-        USER_AGENT,
-      ) ?? true
-    );
+    const robots = robotsCache.get(origin) ?? null;
+
+    return checkAllowed(robots, url);
   }
 
   const robotsUrl =
@@ -73,12 +82,7 @@ export async function canScrape(
       parsedRobots,
     );
 
-    return (
-      parsedRobots.isAllowed(
-        url,
-        USER_AGENT,
-      ) ?? false
-    );
+    return checkAllowed(parsedRobots, url);
   } catch (error) {
     console.error(
       `[Robots] Failed to read ${robotsUrl}`,
@@ -87,7 +91,7 @@ export async function canScrape(
 
     // Conservative behaviour:
     // do not crawl if robots.txt
-    // cannot be checked.
+    // cannot be checked at all.
     return false;
   }
 }

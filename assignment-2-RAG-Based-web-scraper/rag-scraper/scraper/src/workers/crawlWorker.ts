@@ -26,6 +26,7 @@ import {
   getCrawlSession,
   incrementPagesDiscovered,
   incrementPagesCompleted,
+  completeCrawlSession,
 } from "../../../shared/src/database/crawlSessionRepository.js";
 
 import type {
@@ -36,6 +37,18 @@ import {
   normalizeUrl,
 } from "../crawler/urlNormalizer.js";
 
+import {
+  shouldCrawlUrl,
+} from "../crawler/urlFilter.js";
+
+import {
+  processPageVersion,
+} from "../../../processor/src/services/processorService.js";
+
+
+// =================================================
+// REDIS CONNECTION
+// =================================================
 
 const redisConnection = {
   host:
@@ -50,9 +63,14 @@ const redisConnection = {
 };
 
 
+// =================================================
+// PROCESS CRAWL JOB
+// =================================================
+
 async function processCrawlJob(
   job: Job<CrawlJobData>,
 ) {
+
   const {
     crawlSessionId,
 
@@ -71,6 +89,7 @@ async function processCrawlJob(
     depth,
 
     useBrowser = false,
+
   } = job.data;
 
 
@@ -86,10 +105,14 @@ async function processCrawlJob(
     `[CrawlWorker] Depth: ${depth}`,
   );
 
+  console.log(
+    `[CrawlWorker] Session: ${crawlSessionId}`,
+  );
 
-  // -----------------------------------------------
-  // 1. Get crawl session
-  // -----------------------------------------------
+
+  // =================================================
+  // 1. GET CRAWL SESSION
+  // =================================================
 
   const session =
     await getCrawlSession(
@@ -98,18 +121,20 @@ async function processCrawlJob(
 
 
   if (!session) {
+
     throw new Error(
       `Crawl session not found: ${crawlSessionId}`,
     );
+
   }
 
 
   console.log(
-    `[CrawlWorker] Session ${crawlSessionId}`,
+    `[CrawlWorker] Pages discovered: ${session.pagesDiscovered}/${session.maxPages}`,
   );
 
   console.log(
-    `[CrawlWorker] Pages discovered: ${session.pagesDiscovered}/${session.maxPages}`,
+    `[CrawlWorker] Pages completed: ${session.pagesCompleted}`,
   );
 
   console.log(
@@ -117,19 +142,21 @@ async function processCrawlJob(
   );
 
 
-  // -----------------------------------------------
-  // 2. Check page limit
-  // -----------------------------------------------
+  // =================================================
+  // 2. CHECK MAX PAGES
+  // =================================================
 
   if (
     session.pagesDiscovered >
     session.maxPages
   ) {
+
     console.log(
       `[CrawlWorker] Max pages reached. Skipping ${url}`,
     );
 
     return {
+
       pageId,
 
       skipped:
@@ -137,20 +164,57 @@ async function processCrawlJob(
 
       reason:
         "MAX_PAGES_REACHED",
+
     };
+
   }
 
 
-  // -----------------------------------------------
-  // 3. Crawl page
-  // -----------------------------------------------
+  // =================================================
+  // 3. CHECK MAX DEPTH
+  // =================================================
+
+  if (
+    depth >
+    session.maxDepth
+  ) {
+
+    console.log(
+      `[CrawlWorker] Max depth exceeded. Skipping ${url}`,
+    );
+
+    return {
+
+      pageId,
+
+      skipped:
+        true,
+
+      reason:
+        "MAX_DEPTH_REACHED",
+
+    };
+
+  }
+
+
+  // =================================================
+  // 4. CRAWL CURRENT PAGE
+  // =================================================
+
+  console.log(
+    `[CrawlWorker] Crawling page...`,
+  );
+
 
   const result =
     await crawlPage({
+
       url,
 
       useBrowser:
         !!useBrowser,
+
     });
 
 
@@ -158,15 +222,14 @@ async function processCrawlJob(
     `[CrawlWorker] Crawled ${url}`,
   );
 
-
   console.log(
     `[CrawlWorker] Status: ${result.page.statusCode}`,
   );
 
 
-  // -----------------------------------------------
-  // 4. Generate content hash
-  // -----------------------------------------------
+  // =================================================
+  // 5. GENERATE CONTENT HASH
+  // =================================================
 
   const contentHash =
     generateContentHash(
@@ -174,12 +237,13 @@ async function processCrawlJob(
     );
 
 
-  // -----------------------------------------------
-  // 5. Save page version
-  // -----------------------------------------------
+  // =================================================
+  // 6. SAVE PAGE VERSION
+  // =================================================
 
   const pageVersion =
     await savePage({
+
       websiteName,
 
       baseUrl,
@@ -200,36 +264,60 @@ async function processCrawlJob(
       contentType:
         result.page.contentType ??
         "",
+
     });
 
 
   console.log(
-    `[CrawlWorker] PageVersion: ${pageVersion.id}`,
+    `[CrawlWorker] PageVersion saved: ${pageVersion.id}`,
   );
 
+// -----------------------------------------------
+// 7. Process saved page version
+// -----------------------------------------------
 
-  // -----------------------------------------------
-  // 6. Mark current page completed
-  // -----------------------------------------------
+const processedDocument =
+  await processPageVersion(
+    pageVersion.id,
+  );
+
+console.log(
+  `[CrawlWorker] ProcessedDocument: ${processedDocument.processedDocumentId}`,
+);
+  // =================================================
+  // 7. MARK CURRENT PAGE AS COMPLETED
+  // =================================================
 
   await incrementPagesCompleted(
     crawlSessionId,
   );
 
 
-  // -----------------------------------------------
-  // 7. Check depth limit
-  // -----------------------------------------------
+  console.log(
+    `[CrawlWorker] Page completed.`,
+  );
+
+
+  // =================================================
+  // 8. CHECK MAX DEPTH
+  // =================================================
 
   if (
     depth >=
     session.maxDepth
   ) {
+
     console.log(
       `[CrawlWorker] Max depth reached at ${url}`,
     );
 
+    console.log(
+      `[CrawlWorker] No new links will be queued.`,
+    );
+
+
     return {
+
       pageId,
 
       pageVersionId:
@@ -240,18 +328,22 @@ async function processCrawlJob(
       newPages:
         0,
 
+      depth,
+
       skipped:
         false,
 
       reason:
         "MAX_DEPTH_REACHED",
+
     };
+
   }
 
 
-  // -----------------------------------------------
-  // 8. Check page limit before discovering links
-  // -----------------------------------------------
+  // =================================================
+  // 9. GET LATEST SESSION
+  // =================================================
 
   const currentSession =
     await getCrawlSession(
@@ -260,21 +352,34 @@ async function processCrawlJob(
 
 
   if (!currentSession) {
+
     throw new Error(
       `Crawl session not found: ${crawlSessionId}`,
     );
+
   }
 
+
+  // =================================================
+  // 10. CHECK MAX PAGES
+  // =================================================
 
   if (
     currentSession.pagesDiscovered >=
     currentSession.maxPages
   ) {
+
     console.log(
-      `[CrawlWorker] Max pages reached. No new links will be queued.`,
+      `[CrawlWorker] Max pages reached.`,
     );
 
+    console.log(
+      `[CrawlWorker] No new links will be queued.`,
+    );
+
+
     return {
+
       pageId,
 
       pageVersionId:
@@ -285,18 +390,22 @@ async function processCrawlJob(
       newPages:
         0,
 
+      depth,
+
       skipped:
         false,
 
       reason:
         "MAX_PAGES_REACHED",
+
     };
+
   }
 
 
-  // -----------------------------------------------
-  // 9. Register discovered URLs
-  // -----------------------------------------------
+  // =================================================
+  // 11. PROCESS DISCOVERED LINKS
+  // =================================================
 
   let newPages = 0;
 
@@ -306,9 +415,10 @@ async function processCrawlJob(
     of result.links
   ) {
 
-    // ---------------------------------------------
-    // Stop if max pages reached
-    // ---------------------------------------------
+
+    // -----------------------------------------------
+    // 11.1 GET LATEST SESSION
+    // -----------------------------------------------
 
     const latestSession =
       await getCrawlSession(
@@ -317,27 +427,61 @@ async function processCrawlJob(
 
 
     if (!latestSession) {
+
       throw new Error(
         `Crawl session not found: ${crawlSessionId}`,
       );
+
     }
 
+
+    // -----------------------------------------------
+    // 11.2 CHECK MAX PAGES
+    // -----------------------------------------------
 
     if (
       latestSession.pagesDiscovered >=
       latestSession.maxPages
     ) {
+
       console.log(
-        `[CrawlWorker] Max pages reached. Stopping link discovery.`,
+        `[CrawlWorker] Max pages reached.`,
+      );
+
+      console.log(
+        `[CrawlWorker] Stopping link discovery.`,
       );
 
       break;
+
     }
 
 
-    // ---------------------------------------------
-    // Normalize URL
-    // ---------------------------------------------
+    // -----------------------------------------------
+    // 11.3 FILTER URL
+    // -----------------------------------------------
+
+    if (
+      !shouldCrawlUrl(
+        discoveredUrl,
+        {
+          baseUrl,
+        },
+      )
+    ) {
+
+      console.log(
+        `[CrawlWorker] Skipping filtered URL: ${discoveredUrl}`,
+      );
+
+      continue;
+
+    }
+
+
+    // -----------------------------------------------
+    // 11.4 NORMALIZE URL
+    // -----------------------------------------------
 
     const discoveredNormalizedUrl =
       normalizeUrl(
@@ -345,12 +489,13 @@ async function processCrawlJob(
       );
 
 
-    // ---------------------------------------------
-    // Save discovered page
-    // ---------------------------------------------
+    // -----------------------------------------------
+    // 11.5 SAVE DISCOVERED PAGE
+    // -----------------------------------------------
 
     const discovered =
       await saveDiscoveredPage({
+
         websiteId,
 
         url:
@@ -358,23 +503,30 @@ async function processCrawlJob(
 
         normalizedUrl:
           discoveredNormalizedUrl,
+
       });
 
 
-    // ---------------------------------------------
-    // Page already exists
-    // ---------------------------------------------
+    // -----------------------------------------------
+    // 11.6 CHECK IF PAGE ALREADY EXISTS
+    // -----------------------------------------------
 
     if (
       !discovered.created
     ) {
+
+      console.log(
+        `[CrawlWorker] URL already exists: ${discoveredUrl}`,
+      );
+
       continue;
+
     }
 
 
-    // ---------------------------------------------
-    // Count discovered page
-    // ---------------------------------------------
+    // -----------------------------------------------
+    // 11.7 INCREMENT DISCOVERED COUNT
+    // -----------------------------------------------
 
     await incrementPagesDiscovered(
       crawlSessionId,
@@ -389,12 +541,13 @@ async function processCrawlJob(
     );
 
 
-    // ---------------------------------------------
-    // Add new job
-    // ---------------------------------------------
+    // -----------------------------------------------
+    // 11.8 ADD NEW PAGE TO QUEUE
+    // -----------------------------------------------
 
     const newJob =
       await enqueueCrawlJob({
+
         crawlSessionId,
 
         pageId:
@@ -416,21 +569,65 @@ async function processCrawlJob(
           depth + 1,
 
         useBrowser,
+
       });
 
 
     console.log(
-      `[CrawlWorker] New job: ${newJob.id}`,
+      `[CrawlWorker] New job created: ${newJob.id}`,
+    );
+
+  }
+
+
+  // =================================================
+  // 12. LOG CRAWL RESULT
+  // =================================================
+
+  console.log(
+    `[CrawlWorker] ${newPages} new pages added to queue.`,
+  );
+// -----------------------------------------------
+// 13. Check if crawl session is complete
+// -----------------------------------------------
+
+if (
+  newPages === 0
+) {
+  const finalSession =
+    await getCrawlSession(
+      crawlSessionId,
+    );
+
+
+  if (!finalSession) {
+    throw new Error(
+      `Crawl session not found: ${crawlSessionId}`,
     );
   }
 
 
-  console.log(
-    `[CrawlWorker] ${newPages} new pages added`,
-  );
+  if (
+    finalSession.pagesCompleted >=
+    finalSession.pagesDiscovered
+  ) {
+    await completeCrawlSession(
+      crawlSessionId,
+    );
 
+
+    console.log(
+      `[CrawlWorker] Crawl session ${crawlSessionId} completed.`,
+    );
+  }
+}
+
+  // =================================================
+  // 13. RETURN JOB RESULT
+  // =================================================
 
   return {
+
     pageId,
 
     pageVersionId:
@@ -441,42 +638,81 @@ async function processCrawlJob(
     newPages,
 
     depth,
+
   };
+
 }
 
 
+// =================================================
+// WORKER
+// =================================================
+
 export const crawlWorker =
   new Worker<CrawlJobData>(
+
     "crawl",
 
     processCrawlJob,
 
     {
+
       connection:
         redisConnection,
+
+      // One job at a time
+      // per worker container.
+      //
+      // If you run:
+      //
+      // docker compose up --scale crawl-worker=3
+      //
+      // you will have 3 containers,
+      // each processing 1 job at a time.
 
       concurrency:
         1,
 
+      // Prevent Playwright jobs
+      // from being marked as stalled.
+
       lockDuration:
         60_000,
+
     },
+
   );
 
 
+// =================================================
+// COMPLETED EVENT
+// =================================================
+
 crawlWorker.on(
+
   "completed",
+
   (job) => {
+
     console.log(
       `[CrawlWorker] Completed job ${job.id}`,
     );
+
   },
+
 );
 
 
+// =================================================
+// FAILED EVENT
+// =================================================
+
 crawlWorker.on(
+
   "failed",
+
   (job, error) => {
+
     console.error(
       `[CrawlWorker] Failed job ${job?.id}`,
     );
@@ -484,25 +720,38 @@ crawlWorker.on(
     console.error(
       error,
     );
+
   },
+
 );
 
 
+// =================================================
+// WORKER ERROR EVENT
+// =================================================
+
 crawlWorker.on(
+
   "error",
+
   (error) => {
+
     console.error(
       "[CrawlWorker] Worker error:",
       error,
     );
+
   },
+
 );
 
+// =================================================
+// START WORKER
+// =================================================
 
 console.log(
   "[CrawlWorker] Worker started.",
 );
-
 
 console.log(
   "[CrawlWorker] Waiting for jobs...",

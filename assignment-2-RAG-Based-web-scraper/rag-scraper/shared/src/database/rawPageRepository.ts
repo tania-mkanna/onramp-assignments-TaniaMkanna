@@ -1,4 +1,5 @@
 import { prisma } from "./prisma.js";
+import { Prisma } from "../generated/prisma/index.js";
 
 interface SavePageInput {
   websiteName: string;
@@ -164,41 +165,19 @@ export async function saveDiscoveredPage(
   }
 
   // --------------------------------------------------
-  // 2. Check whether Page already exists
+  // 2. Try to create the page directly.
+  //
+  //    We do NOT check-then-create, because two workers
+  //    can race between the check and the create. Instead
+  //    we attempt the create and let the DB's unique
+  //    constraint be the single source of truth. If we
+  //    lose the race, we catch P2002 and fetch the row
+  //    the other worker created.
   // --------------------------------------------------
 
-  const existingPage =
-    await prisma.page.findUnique({
-      where: {
-        websiteId_normalizedUrl: {
-          websiteId: data.websiteId,
-          normalizedUrl: data.normalizedUrl,
-        },
-      },
-    });
+  try {
 
-  // --------------------------------------------------
-  // 3. Page already exists
-  // --------------------------------------------------
-
-  if (existingPage) {
-    console.log(
-      "[DB] Page already exists:",
-      existingPage.id,
-    );
-
-    return {
-      page: existingPage,
-      created: false,
-    };
-  }
-
-  // --------------------------------------------------
-  // 4. Create new PENDING Page
-  // --------------------------------------------------
-
-  const page =
-    await prisma.page.create({
+    const page = await prisma.page.create({
       data: {
         websiteId: data.websiteId,
         url: data.url,
@@ -207,14 +186,52 @@ export async function saveDiscoveredPage(
       },
     });
 
-  console.log(
-    "[DB] Discovered Page created:",
-    page.id,
-  );
+    console.log(
+      "[DB] Discovered Page created:",
+      page.id,
+    );
 
-  return {
-    page,
-    created: true,
-  };
+    return {
+      page,
+      created: true,
+    };
+
+  } catch (error) {
+
+    const isDuplicate =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002";
+
+    if (!isDuplicate) {
+      throw error;
+    }
+
+    console.log(
+      "[DB] Lost create race, fetching existing page:",
+      data.url,
+    );
+
+    const existingPage = await prisma.page.findUnique({
+      where: {
+        websiteId_normalizedUrl: {
+          websiteId: data.websiteId,
+          normalizedUrl: data.normalizedUrl,
+        },
+      },
+    });
+
+    if (!existingPage) {
+      // Should not happen — the constraint violation implies
+      // a row exists. Re-throw the original error rather than
+      // silently returning nothing.
+      throw error;
+    }
+
+    return {
+      page: existingPage,
+      created: false,
+    };
+
+  }
 
 }

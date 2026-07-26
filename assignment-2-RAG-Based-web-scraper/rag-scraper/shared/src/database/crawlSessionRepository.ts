@@ -44,6 +44,9 @@ export async function createCrawlSession(
 
   return session;
 }
+// =================================================
+// GET CRAWL SESSION
+// =================================================
 
 export async function getCrawlSession(
   sessionId: string,
@@ -54,6 +57,9 @@ export async function getCrawlSession(
     },
   });
 }
+// =================================================
+// INCREMENT PAGES DISCOVERED
+// =================================================
 
 export async function incrementPagesDiscovered(
   sessionId: string,
@@ -70,6 +76,9 @@ export async function incrementPagesDiscovered(
     },
   });
 }
+// =================================================
+// INCREMENT PAGES COMPLETED
+// =================================================
 
 export async function incrementPagesCompleted(
   sessionId: string,
@@ -87,6 +96,10 @@ export async function incrementPagesCompleted(
   });
 }
 
+// =================================================
+// COMPLETE CRAWL SESSION
+// =================================================
+
 export async function completeCrawlSession(
   sessionId: string,
 ) {
@@ -100,4 +113,50 @@ export async function completeCrawlSession(
         "COMPLETED",
     },
   });
+}
+
+// =================================================
+// FAIL CRAWL SESSION
+// =================================================
+
+export async function failCrawlSession(
+  sessionId: string,
+) {
+  return prisma.crawlSession.update({
+    where: {
+      id:
+        sessionId,
+    },
+
+    data: {
+      status:
+        "FAILED",
+    },
+  });
+}
+
+// =================================================
+// CHECK IF CRAWL SESSION IS COMPLETE
+// =================================================
+
+export async function isCrawlSessionComplete(
+  sessionId: string,
+) {
+  const session =
+    await getCrawlSession(
+      sessionId,
+    );
+
+
+  if (!session) {
+    throw new Error(
+      `Crawl session not found: ${sessionId}`,
+    );
+  }
+
+
+  return (
+    session.pagesCompleted >=
+    session.pagesDiscovered
+  );
 }

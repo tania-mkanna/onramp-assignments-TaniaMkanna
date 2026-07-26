@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 
 import {
   isSameDomain,
-} from "./urlFilter.js";
+} from "./urlValidator.js";
 
 export function extractLinks(
   html: string,
